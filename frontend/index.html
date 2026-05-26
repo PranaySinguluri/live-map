@@ -57,9 +57,7 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        const API_BASE = window.location.origin.includes('localhost')
-            ? 'http://localhost:8080'
-            : window.location.origin;
+        const API_BASE = const API_BASE = 'https://live-map-production-b529.up.railway.app';
 
         const map = L.map('map').setView([34.0522, -118.2437], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
