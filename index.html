@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="LiveMap">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%237F77DD'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>📍</text></svg>">
+    <title>LiveMap</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, sans-serif; overflow: hidden; }
+        #map { height: 100vh; width: 100vw; }
+        .controls {
+            position: fixed; top: env(safe-area-inset-top, 20px); left: 12px; right: 12px;
+            display: flex; gap: 8px; z-index: 1000;
+        }
+        .user-select {
+            flex: 1; padding: 12px; background: white; border: none;
+            border-radius: 10px; font-size: 16px; font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .refresh-btn {
+            padding: 12px 20px; background: #7F77DD; color: white; border: none;
+            border-radius: 10px; font-size: 16px; font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .status-bar {
+            position: fixed; bottom: env(safe-area-inset-bottom, 20px); left: 12px; right: 12px;
+            background: white; padding: 14px; border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.15); z-index: 1000;
+        }
+        .status-row { display: flex; justify-content: space-between; align-items: center; }
+        .status-row + .status-row { margin-top: 8px; padding-top: 8px; border-top: 0.5px solid #eee; }
+        .user-name { font-weight: 500; font-size: 14px; }
+        .user-time { font-size: 12px; color: #888; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .dot-me { background: #7F77DD; }
+        .dot-her { background: #D4537E; }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <select class="user-select" id="userSelect">
+            <option value="pranay">I am Pranay</option>
+            <option value="girlfriend">I am Girlfriend</option>
+        </select>
+        <button class="refresh-btn" id="refreshBtn">Refresh</button>
+    </div>
+    <div id="map"></div>
+    <div class="status-bar" id="statusBar">
+        <div class="status-row"><span><span class="dot dot-me"></span><span class="user-name">Pranay</span></span><span class="user-time" id="pranayTime">no data</span></div>
+        <div class="status-row"><span><span class="dot dot-her"></span><span class="user-name">Girlfriend</span></span><span class="user-time" id="girlfriendTime">no data</span></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const API_BASE = window.location.origin.includes('localhost')
+            ? 'http://localhost:8080'
+            : window.location.origin;
+
+        const map = L.map('map').setView([34.0522, -118.2437], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        const markers = {};
+        const colors = { pranay: '#7F77DD', girlfriend: '#D4537E' };
+
+        function createIcon(color) {
+            return L.divIcon({
+                html: `<div style="background:${color};width:24px;height:24px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>`,
+                className: '', iconSize: [24, 24], iconAnchor: [12, 12]
+            });
+        }
+
+        function timeAgo(iso) {
+            if (!iso) return 'no data';
+            const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+            if (diff < 60) return Math.floor(diff) + 's ago';
+            if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+            return Math.floor(diff / 3600) + 'h ago';
+        }
+
+        async function fetchLocations() {
+            try {
+                const res = await fetch(API_BASE + '/api/locations');
+                const data = await res.json();
+                const bounds = [];
+                data.forEach(loc => {
+                    const latlng = [loc.latitude, loc.longitude];
+                    bounds.push(latlng);
+                    if (markers[loc.userId]) {
+                        markers[loc.userId].setLatLng(latlng);
+                    } else {
+                        markers[loc.userId] = L.marker(latlng, {
+                            icon: createIcon(colors[loc.userId] || '#888')
+                        }).addTo(map);
+                    }
+                    const el = document.getElementById(loc.userId + 'Time');
+                    if (el) el.textContent = timeAgo(loc.updatedAt);
+                });
+                if (bounds.length > 1) map.fitBounds(bounds, { padding: [80, 80] });
+                else if (bounds.length === 1) map.setView(bounds[0], 15);
+            } catch (e) {
+                console.error('Fetch failed', e);
+            }
+        }
+
+        async function sendMyLocation() {
+            const userId = document.getElementById('userSelect').value;
+            if (!navigator.geolocation) {
+                alert('Geolocation not supported');
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                try {
+                    await fetch(API_BASE + '/api/locations/' + userId, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            latitude: pos.coords.latitude,
+                            longitude: pos.coords.longitude
+                        })
+                    });
+                    fetchLocations();
+                } catch (e) { console.error(e); }
+            }, (err) => {
+                alert('Location error: ' + err.message);
+            }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+        }
+
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            sendMyLocation();
+        });
+
+        // On load: push my location, then fetch
+        sendMyLocation();
+        // Auto refresh every 15 seconds
+        setInterval(fetchLocations, 15000);
+    </script>
+</body>
+</html>
