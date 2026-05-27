@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="LiveMap">
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%237F77DD'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>📍</text></svg>">
@@ -137,6 +138,31 @@
         let partnerMarker = null;
         let refreshInterval = null;
 
+        function startAutoRefresh() {
+            if (refreshInterval) clearInterval(refreshInterval);
+            refreshInterval = setInterval(() => {
+                fetchPartnerLocation();
+                sendMyLocation();
+            }, 10000);
+        }
+
+        function restoreLogin() {
+            const savedUser = localStorage.getItem('liveMapUser');
+            const savedCode = localStorage.getItem('liveMapCode');
+            const savedPartnerCode = localStorage.getItem('liveMapPartnerCode');
+            
+            if (savedUser && savedCode && savedPartnerCode) {
+                currentUser = savedUser;
+                currentUserCode = savedCode;
+                partnerCode = savedPartnerCode;
+                showApp();
+                document.getElementById('currentUser').textContent = currentUser;
+                sendMyLocation();
+                startAutoRefresh();
+                fetchPartnerLocation();
+            }
+        }
+
         // Login
         document.getElementById('loginBtn').addEventListener('click', async () => {
             const userName = document.getElementById('userName').value.trim();
@@ -157,18 +183,15 @@
             currentUserCode = userCode;
             partnerCode = partnerCodeInput;
             
+            // Save to localStorage
+            localStorage.setItem('liveMapUser', userName);
+            localStorage.setItem('liveMapCode', userCode);
+            localStorage.setItem('liveMapPartnerCode', partnerCodeInput);
+            
             showApp();
             document.getElementById('currentUser').textContent = userName;
             sendMyLocation();
-            
-            // Start auto-refresh
-            if (refreshInterval) clearInterval(refreshInterval);
-            refreshInterval = setInterval(() => {
-                fetchPartnerLocation();
-                sendMyLocation();
-            }, 10000);
-            
-            // Fetch partner location immediately
+            startAutoRefresh();
             fetchPartnerLocation();
         });
 
@@ -178,6 +201,9 @@
             currentUserCode = null;
             partnerCode = null;
             if (refreshInterval) clearInterval(refreshInterval);
+            localStorage.removeItem('liveMapUser');
+            localStorage.removeItem('liveMapCode');
+            localStorage.removeItem('liveMapPartnerCode');
             document.getElementById('loginScreen').classList.remove('hidden');
             document.getElementById('appContainer').style.display = 'none';
             document.getElementById('userName').value = '';
@@ -254,6 +280,9 @@
                 console.error('Fetch partner error:', e);
             }
         }
+
+        // On page load, restore login if it exists
+        window.addEventListener('load', restoreLogin);
     </script>
 </body>
 </html>
